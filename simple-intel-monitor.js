@@ -16,15 +16,28 @@ class SimpleIntelMonitor {
         this.config = {
             serverUrl: 'https://intel.thrainkrill.space',
             apiKey: 'desktop-client-api-key-2024',
-            updateInterval: 1000, // Check every second
+            updateInterval: 100, // Check every 100ms for ultra-fast intel detection
             pilotName: 'Thrain Krill',
-            heartbeatInterval: 5 * 60 * 1000 // 5 minutes
+            heartbeatInterval: 10 * 1000 // 10 seconds (faster response)
         };
         
         this.watchedFiles = new Map();
         this.lastProcessedLines = new Map();
         this.clientId = `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         this.heartbeatTimer = null;
+        this.heartbeatCounter = 0; // Track heartbeat count for less frequent logging
+        
+        // Primary log selection for multiple clients
+        this.channelLogs = new Map(); // channelName -> { primaryLog: filePath, allLogs: [filePaths], lastActivity: timestamp, lastSwitch: timestamp }
+        this.lastActivityCheck = new Map(); // filePath -> lastModified timestamp
+        this.processedMessages = new Set(); // Track processed messages to prevent duplicates
+        this.PRIMARY_SWITCH_COOLDOWN = 5000; // 5 seconds minimum between primary log switches
+        
+        // Clean up old processed messages every 5 minutes to prevent memory leaks
+        setInterval(() => {
+            this.cleanupProcessedMessages();
+        }, 5 * 60 * 1000);
+        
         this.stats = {
             messagesProcessed: 0,
             intelSent: 0,
@@ -56,6 +69,26 @@ class SimpleIntelMonitor {
             /defense/i,         // Defense channels
             /recon/i           // Recon channels
         ];
+    }
+
+    /**
+     * Get current timestamp in HH:MM:SS format for logging
+     */
+    getTimestamp() {
+        const now = new Date();
+        return now.toLocaleTimeString('en-US', { 
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+
+    /**
+     * Enhanced console.log with timestamp
+     */
+    log(message) {
+        console.log(`[${this.getTimestamp()}] ${message}`);
     }
 
     /**
@@ -94,12 +127,12 @@ class SimpleIntelMonitor {
                         this.config.apiKey = configData.apiKey;
                     }
 
-                    console.log(`✓ Configuration loaded from ${configPath}`);
+                    this.log(`✓ Configuration loaded from ${configPath}`);
                     break;
                 }
             }
         } catch (error) {
-            console.log(`⚠ Using default configuration: ${error.message}`);
+            this.log(`⚠ Using default configuration: ${error.message}`);
         }
     }
 
@@ -109,18 +142,7 @@ class SimpleIntelMonitor {
     async sendHeartbeat() {
         try {
             const heartbeatData = {
-                clientId: this.clientId,
-                pilot: this.config.pilotName,
-                timestamp: new Date().toISOString(),
-                version: '1.0.0',
-                platform: `${os.platform()}-${os.arch()}`,
-                stats: {
-                    uptime: Math.floor((Date.now() - this.stats.startTime.getTime()) / 1000),
-                    messagesProcessed: this.stats.messagesProcessed,
-                    intelSent: this.stats.intelSent,
-                    errorsEncountered: this.stats.errorsEncountered,
-                    watchedFiles: this.watchedFiles.size
-                }
+                clientId: this.clientId
             };
 
             const response = await fetch(`${this.config.serverUrl}/api/heartbeat`, {
@@ -134,12 +156,16 @@ class SimpleIntelMonitor {
 
             if (response.ok) {
                 const result = await response.json();
-                console.log(`💗 Heartbeat sent successfully`);
+                this.heartbeatCounter++;
+                // Only show heartbeat message every 5 minutes (30 heartbeats at 10s intervals)
+                if (this.heartbeatCounter % 30 === 0) {
+                    this.log(`💗 Heartbeat sent successfully (${this.heartbeatCounter} total)`);
+                }
             } else {
-                console.log(`⚠ Heartbeat failed: ${response.status} ${response.statusText}`);
+                this.log(`⚠ Heartbeat failed: ${response.status} ${response.statusText}`);
             }
         } catch (error) {
-            console.log(`⚠ Heartbeat error: ${error.message}`);
+            this.log(`⚠ Heartbeat error: ${error.message}`);
         }
     }
 
@@ -147,7 +173,7 @@ class SimpleIntelMonitor {
      * Start heartbeat timer
      */
     startHeartbeat() {
-        console.log(`💗 Starting heartbeat every ${this.config.heartbeatInterval / 1000 / 60} minutes`);
+        this.log(`💗 Starting heartbeat every ${this.config.heartbeatInterval / 1000} seconds (showing status every 5 minutes)`);
         
         // Send initial heartbeat
         this.sendHeartbeat();
@@ -165,7 +191,7 @@ class SimpleIntelMonitor {
         if (this.heartbeatTimer) {
             clearInterval(this.heartbeatTimer);
             this.heartbeatTimer = null;
-            console.log('💗 Heartbeat stopped');
+            this.log('💗 Heartbeat stopped');
         }
     }
 
@@ -177,10 +203,10 @@ class SimpleIntelMonitor {
         if (this.config.eveLogsPath) {
             const customPath = this.config.eveLogsPath;
             if (fs.existsSync(customPath)) {
-                console.log(`✓ Using custom EVE logs path: ${customPath}`);
+                this.log(`✓ Using custom EVE logs path: ${customPath}`);
                 return customPath;
             } else {
-                console.log(`⚠ Custom path not found: ${customPath}, trying default locations...`);
+                this.log(`⚠ Custom path not found: ${customPath}, trying default locations...`);
             }
         }
 
@@ -213,10 +239,10 @@ class SimpleIntelMonitor {
             path.join(os.homedir(), '.local', 'share', 'Steam', 'steamapps', 'compatdata', '8500', 'pfx', 'drive_c', 'users', 'steamuser', 'Documents', 'EVE', 'logs', 'Chatlogs')
         ];
 
-        console.log('🔍 Scanning for EVE Online chat logs...');
+        this.log('🔍 Scanning for EVE Online chat logs...');
         
         for (const logPath of possiblePaths) {
-            console.log(`   Checking: ${logPath}`);
+            this.log(`   Checking: ${logPath}`);
             if (fs.existsSync(logPath)) {
                 // Verify it contains chat log files
                 try {
@@ -224,13 +250,13 @@ class SimpleIntelMonitor {
                     const logFiles = files.filter(file => file.endsWith('.txt'));
                     
                     if (logFiles.length > 0) {
-                        console.log(`✓ Found EVE logs at: ${logPath} (${logFiles.length} files)`);
+                        this.log(`✓ Found EVE logs at: ${logPath} (${logFiles.length} files)`);
                         return logPath;
                     } else {
-                        console.log(`   Directory exists but no .txt files found`);
+                        this.log(`   Directory exists but no .txt files found`);
                     }
                 } catch (error) {
-                    console.log(`   Cannot read directory: ${error.message}`);
+                    this.log(`   Cannot read directory: ${error.message}`);
                 }
             }
         }
@@ -295,18 +321,56 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
             lowerMessage.includes(keyword.toLowerCase())
         );
 
-        // For dedicated intel channels, accept more messages (lower threshold)
+        // For non-intel channels, require keywords
         if (!hasIntelKeyword && !isFromIntelChannel) {
             return null;
         }
 
-        // For intel channels, even messages without keywords might be intel
-        if (isFromIntelChannel && !hasIntelKeyword) {
-            // Check if it's likely intel (system names, directional info, etc.)
-            const likelyIntel = /\b(gate|station|belt|asteroid|moon|planet|sun|warp|jump|dock|undock|in|out|\+1|\-1|next|coming|going)\b/i.test(lowerMessage);
-            if (!likelyIntel) {
+        // For intel channels, be much more permissive - accept almost any message!
+        if (isFromIntelChannel) {
+            // Skip Channel MOTD messages first (regardless of content)
+            if (/channel motd/i.test(message)) {
                 return null;
             }
+
+            // Skip other obvious non-intel messages
+            const skipPatterns = [
+                /^eve system>/i,            // System messages
+                /fleet.*invite/i,           // Fleet invites
+                /can i get.*link/i,         // Fleet link requests
+                /link.*fleet/i,             // Fleet link requests (reverse order)
+                /^\s*$/,                    // Empty messages
+                /^o7$/i,                    // Greetings
+                /^thanks?$/i,               // Thanks
+                /^ty$/i,                    // Thank you
+                /join.*fleet/i,             // Fleet join requests
+                /mumble/i,                  // Mumble references (unless with system)
+                /discord/i,                 // Discord references
+                /rorq.*fleet/i,             // Rorqual fleet references
+                /ferox.*fleet/i,            // Ferox fleet references
+                /going to reship/i          // Reshipping messages
+            ];
+
+            // If message matches skip patterns and doesn't contain location info, skip it
+            const hasLocationInfo = /\b[A-Z0-9\-]{3,}\b/i.test(message) || // System codes
+                                   /\b(gate|station|belt|local|\+\d+|\-\d+|\d+\+|\d+\-)\b/i.test(message);
+
+            const shouldSkip = skipPatterns.some(pattern => pattern.test(message)) && !hasLocationInfo;
+            
+            if (shouldSkip) {
+                return null;
+            }
+
+            // Accept everything else in intel channels!
+            // This includes:
+            // - System names alone: "4O-239"  
+            // - System + pilot names: "4O-239 FITTIpalti Kira Frost"
+            // - Partial intel: just pilot names that might be hostiles
+            // - Follow-up messages with additional details
+            // - Multi-line intel reports
+        } else if (!hasIntelKeyword) {
+            // Non-intel channels still need keywords
+            return null;
         }
 
         // Extract additional intel context
@@ -339,6 +403,29 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
     }
 
     /**
+     * Quick check if a line contains intel keywords (for buffer checking)
+     */
+    containsIntelKeywords(line) {
+        if (!line || !line.trim()) return false;
+        
+        const parsed = this.parseLogLine(line);
+        if (!parsed) return false;
+        
+        const lowerMessage = parsed.message.toLowerCase();
+        
+        // Check for intel keywords
+        const hasIntelKeyword = this.intelKeywords.some(keyword => 
+            lowerMessage.includes(keyword.toLowerCase())
+        );
+        
+        // Check for system name patterns (3-4 char combinations with numbers/dashes)
+        const systemPattern = /[A-Z0-9]{1,4}-[A-Z0-9]{1,4}/i;
+        const hasSystemName = systemPattern.test(parsed.message);
+        
+        return hasIntelKeyword || hasSystemName;
+    }
+
+    /**
      * Parse EVE chat log line
      */
     parseLogLine(line) {
@@ -358,11 +445,11 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
 
         const [, timestamp, pilot, message] = match;
         
-        // Parse timestamp as local time (EVE logs are in local timezone)
-        const localTimestamp = timestamp.replace(/\./g, '-').replace(' ', 'T');
+        // Parse timestamp as UTC (EVE logs are in UTC/EVE time)
+        const utcTimestamp = timestamp.replace(/\./g, '-').replace(' ', 'T') + 'Z';
         
         return {
-            timestamp: new Date(localTimestamp), // Parse as local time, not UTC
+            timestamp: new Date(utcTimestamp), // Parse as UTC time
             pilot: pilot.trim(),
             message: message.trim()
         };
@@ -374,13 +461,23 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
     async submitIntel(intelData) {
         const startTime = Date.now();
         try {
+            // Send in the legacy format the worker expects
+            const workerFormat = {
+                system: intelData.system,
+                intel: intelData.intel,
+                pilot: intelData.pilot,
+                timestamp: intelData.timestamp.toISOString()
+            };
+
+            // Submitting intel (production mode - minimal logging)
+
             const response = await fetch(`${this.config.serverUrl}/api/intel`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${this.config.apiKey}`
                 },
-                body: JSON.stringify(intelData)
+                body: JSON.stringify(workerFormat)
             });
 
             const responseTime = Date.now() - startTime;
@@ -388,21 +485,170 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
             if (response.ok) {
                 const result = await response.json();
                 this.stats.intelSent++;
-                console.log(`✅ Intel submitted successfully (${responseTime}ms)`);
+                this.log(`✅ Intel submitted successfully (${responseTime}ms)`);
                 if (result.message && result.message !== 'Intel received successfully') {
-                    console.log(`   Server: ${result.message}`);
+                    this.log(`   Server: ${result.message}`);
                 }
             } else {
                 const errorText = await response.text();
-                console.error(`❌ Failed to submit intel: ${response.status} ${response.statusText}`);
-                console.error(`   Response: ${errorText}`);
+                this.log(`❌ Failed to submit intel: ${response.status} ${response.statusText}`);
+                this.log(`   Response: ${errorText}`);
                 this.stats.errorsEncountered++;
             }
         } catch (error) {
             const responseTime = Date.now() - startTime;
-            console.error(`❌ Error submitting intel (${responseTime}ms):`, error.message);
+            this.log(`❌ Error submitting intel (${responseTime}ms): ${error.message}`);
             this.stats.errorsEncountered++;
         }
+    }
+
+    /**
+     * Register a log file for a channel and determine if it should be the primary
+     */
+    registerChannelLog(filePath) {
+        const fileName = path.basename(filePath, '.txt');
+        const channelName = fileName.replace(/_\d{8}_\d{6}.*$/, '');
+        
+        if (!this.channelLogs.has(channelName)) {
+            this.channelLogs.set(channelName, {
+                primaryLog: filePath,
+                allLogs: [filePath],
+                lastActivity: this.getFileModifiedTime(filePath),
+                lastSwitch: Date.now()
+            });
+            return true; // This is the primary log
+        }
+        
+        const channelData = this.channelLogs.get(channelName);
+        
+        // Add to list if not already there
+        if (!channelData.allLogs.includes(filePath)) {
+            channelData.allLogs.push(filePath);
+        }
+        
+        // Check if this should become the new primary log (with cooldown)
+        const fileModTime = this.getFileModifiedTime(filePath);
+        const timeSinceLastSwitch = Date.now() - (channelData.lastSwitch || 0);
+        const isSignificantlyNewer = fileModTime > channelData.lastActivity + 10000; // 10 seconds newer
+        
+        if (isSignificantlyNewer && timeSinceLastSwitch > this.PRIMARY_SWITCH_COOLDOWN) {
+            if (channelData.primaryLog !== filePath) {
+                this.log(`🔄 [${channelName}] Switching primary log: ${path.basename(channelData.primaryLog)} → ${path.basename(filePath)}`);
+                channelData.primaryLog = filePath;
+                channelData.lastSwitch = Date.now();
+            }
+            channelData.lastActivity = fileModTime;
+            return true; // This is now the primary log
+        }
+        
+        return false; // This is not the primary log
+    }
+
+    /**
+     * Check if a file path is the current primary log for its channel
+     */
+    isPrimaryLog(filePath) {
+        const fileName = path.basename(filePath, '.txt');
+        const channelName = fileName.replace(/_\d{8}_\d{6}.*$/, '');
+        const channelData = this.channelLogs.get(channelName);
+        return channelData && channelData.primaryLog === filePath;
+    }
+
+    /**
+     * Update activity for a log file and potentially switch primary logs
+     */
+    updateLogActivity(filePath) {
+        const fileName = path.basename(filePath, '.txt');
+        const channelName = fileName.replace(/_\d{8}_\d{6}.*$/, '');
+        const channelData = this.channelLogs.get(channelName);
+        
+        if (!channelData) return false;
+        
+        const fileModTime = this.getFileModifiedTime(filePath);
+        this.lastActivityCheck.set(filePath, fileModTime);
+        
+        // Only switch if it's significantly more active and cooldown has passed
+        const timeSinceLastSwitch = Date.now() - (channelData.lastSwitch || 0);
+        const isSignificantlyNewer = fileModTime > channelData.lastActivity + 10000; // 10 seconds newer
+        
+        if (isSignificantlyNewer && channelData.primaryLog !== filePath && timeSinceLastSwitch > this.PRIMARY_SWITCH_COOLDOWN) {
+            this.log(`🔄 [${channelName}] Switching to more active log: ${path.basename(channelData.primaryLog)} → ${path.basename(filePath)}`);
+            channelData.primaryLog = filePath;
+            channelData.lastActivity = fileModTime;
+            channelData.lastSwitch = Date.now();
+            return true; // Primary log changed
+        } else if (channelData.primaryLog === filePath) {
+            channelData.lastActivity = fileModTime;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Get file modification time safely
+     */
+    getFileModifiedTime(filePath) {
+        try {
+            return fs.statSync(filePath).mtime.getTime();
+        } catch (error) {
+            return 0;
+        }
+    }
+
+    /**
+     * Clean up old processed messages to prevent memory leaks
+     */
+    cleanupProcessedMessages() {
+        // Keep only messages from the last hour (3600000 ms)
+        const oneHourAgo = Date.now() - 3600000;
+        const messagesToKeep = new Set();
+        
+        for (const messageId of this.processedMessages) {
+            // Extract timestamp from messageId (format: system:pilot:intel:timestamp)
+            const parts = messageId.split(':');
+            const timestamp = parseInt(parts[parts.length - 1]);
+            
+            if (timestamp > oneHourAgo) {
+                messagesToKeep.add(messageId);
+            }
+        }
+        
+        this.processedMessages = messagesToKeep;
+        this.log(`🧹 Cleaned up processed messages (kept ${messagesToKeep.size} recent messages)`);
+    }
+
+    /**
+     * Filter lines to only include actual user messages (excludes MOTD, headers, empty lines)
+     */
+    filterToMessageLines(lines) {
+        return lines.filter(line => {
+            if (!line.trim()) return false;
+            
+            // Skip header lines (Channel ID, Channel Name, etc.)
+            if (line.includes('Channel ID:') || 
+                line.includes('Channel Name:') || 
+                line.includes('Listener:') || 
+                line.includes('Session started:') ||
+                line.match(/^-+$/)) {
+                return false;
+            }
+            
+            // Skip EVE System MOTD messages
+            if (line.includes('EVE System >') && line.includes('Channel MOTD')) {
+                return false;
+            }
+            
+            // Only include lines that match the chat log format
+            const logRegex = /^\[\s*(\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2})\s*\]\s*([^>]+)\s*>\s*(.+)$/;
+            return logRegex.test(line.trim());
+        });
+    }
+
+    /**
+     * Get the count of actual message lines (excluding MOTD and headers)
+     */
+    getMessageLineCount(lines) {
+        return this.filterToMessageLines(lines).length;
     }
 
     /**
@@ -420,12 +666,13 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
                     // Fallback to UTF-8
                     content = fs.readFileSync(filePath, 'utf8');
                 } catch (error2) {
-                    console.log(`⚠ Error reading file ${path.basename(filePath)}:`, error2.message);
+                    this.log(`⚠ Error reading file ${path.basename(filePath)}: ${error2.message}`);
                     return;
                 }
             }
             
-            const lines = content.split('\n');
+            const allLines = content.split('\n');
+            const lines = this.filterToMessageLines(allLines); // Only count actual message lines
             const lastProcessedLine = this.lastProcessedLines.get(filePath) || 0;
 
             // Extract system name from filename
@@ -435,36 +682,57 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
             const channelName = system;
             const isIntelChannel = this.isIntelChannel(channelName);
 
-            // For initial load, only process messages from the last 10 minutes
+            // For initial load, only process messages from the last 1 minute
             let linesToProcess;
             if (isInitialLoad) {
                 const now = new Date();
-                const tenMinutesAgo = new Date(now.getTime() - (10 * 60 * 1000));
+                const oneMinuteAgo = new Date(now.getTime() - (1 * 60 * 1000));
                 
-                // Filter lines to only include messages from the last 10 minutes
+                // Filter lines to only include messages from the last 1 minute
                 linesToProcess = lines.filter(line => {
                     if (!line.trim()) return false;
                     const parsed = this.parseLogLine(line);
                     if (!parsed) return false;
-                    return parsed.timestamp >= tenMinutesAgo;
+                    return parsed.timestamp >= oneMinuteAgo;
                 });
                 
                 if (isIntelChannel && linesToProcess.length > 0) {
-                    console.log(`📋 Initial load: ${channelName} - found ${linesToProcess.length} recent messages (last 10 minutes)`);
+                    this.log(`📋 Initial load: ${channelName} - found ${linesToProcess.length} recent messages (last 1 minute)`);
                 }
                 
                 // Set last processed to total lines to avoid reprocessing on next change
                 this.lastProcessedLines.set(filePath, lines.length);
             } else {
                 // Normal processing: only new lines since last processed
-                linesToProcess = lines.slice(lastProcessedLine);
+                
+                // Add a small buffer to catch any messages that might have been missed due to race conditions
+                // Check up to 3 lines before the lastProcessedLine to catch any missed intel
+                const bufferSize = 3;
+                const startIndex = Math.max(0, lastProcessedLine - bufferSize);
+                
+                // Filter to only new lines that haven't been processed yet
+                linesToProcess = [];
+                for (let i = startIndex; i < lines.length; i++) {
+                    const line = lines[i];
+                    const lineIndex = i;
+                    
+                    // Only process lines that are truly new (at or after lastProcessedLine)
+                    // OR lines in the buffer zone that contain intel keywords (safety check)
+                    if (lineIndex >= lastProcessedLine) {
+                        linesToProcess.push(line);
+                    } else if (lineIndex >= startIndex && this.containsIntelKeywords(line)) {
+                        linesToProcess.push(line);
+                    }
+                }
             }
             
             let processedCount = 0;
             let newMessageCount = 0;
 
             for (const line of linesToProcess) {
-                if (!line.trim()) continue;
+                if (!line.trim()) {
+                    continue;
+                }
 
                 const parsed = this.parseLogLine(line);
                 if (!parsed) {
@@ -499,8 +767,22 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
                 if (intelData) {
                     const messageAge = Math.floor((new Date() - parsed.timestamp) / 1000);
                     
-                    // Only submit intel for NEW messages (not during initial load)
-                    if (!isInitialLoad) {
+                    // Create unique message ID to prevent duplicates
+                    const messageId = `${intelData.system}:${intelData.pilot}:${intelData.intel}:${parsed.timestamp.getTime()}`;
+                    
+                    // Check if we've already processed this exact message
+                    if (this.processedMessages.has(messageId)) {
+                        console.log(`🔄 [DUPLICATE] Skipping already processed: ${intelData.system} - ${intelData.intel}`);
+                        continue;
+                    }
+                    
+                    // Submit intel for NEW messages OR recent messages during initial load (within 1 minute)
+                    const shouldSubmit = !isInitialLoad || messageAge <= (1 * 60); // 1 minute = 60 seconds
+                    
+                    if (shouldSubmit) {
+                        // Mark as processed before submitting
+                        this.processedMessages.add(messageId);
+                        
                         const submitStartTime = Date.now();
                         console.log(`⚡ INTEL DETECTED: ${intelData.system} - ${intelData.intel} (message ${messageAge}s old)`);
                         await this.submitIntel(intelData);
@@ -508,7 +790,7 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
                         console.log(`✅ Intel submitted in ${submitTime}ms (total delay: ~${messageAge}s)`);
                         processedCount++;
                     } else {
-                        // During initial load, just log that we found intel but don't submit
+                        // During initial load, log that we found intel but don't submit if it's old
                         console.log(`📋 [INITIAL] Intel found: ${intelData.system} - ${intelData.intel} (message ${messageAge}s old) - NOT submitted`);
                     }
                 }
@@ -534,21 +816,22 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
      * Start monitoring EVE chat logs
      */
     async startMonitoring() {
-        console.log('🚀 Simple EVE Intel Monitor Starting...');
-        console.log(`📡 Server: ${this.config.serverUrl}`);
-        console.log(`👤 Pilot: ${this.config.pilotName}`);
+        this.log('🚀 Simple EVE Intel Monitor Starting...');
+        this.log(`📡 Server: ${this.config.serverUrl}`);
+        this.log(`👤 Pilot: ${this.config.pilotName}`);
         
         try {
             const logsDirectory = this.findEveLogsDirectory();
             
-            // Watch for new and modified log files with optimized settings
+            // Watch for new and modified log files with optimized settings for maximum speed
             const watcher = watch(path.join(logsDirectory, '*.txt'), {
                 persistent: true,
                 ignoreInitial: false,
-                usePolling: false,        // Use native OS events for faster detection
+                usePolling: true,         // Enable polling for OneDrive compatibility
+                interval: 100,            // Poll every 100ms for ultra-fast detection
                 awaitWriteFinish: {       // Wait for file write to complete
-                    stabilityThreshold: 100,  // Wait 100ms after last change
-                    pollInterval: 50          // Check every 50ms
+                    stabilityThreshold: 100,  // Wait only 100ms after last change
+                    pollInterval: 50          // Check every 50ms for maximum responsiveness
                 },
                 atomic: true              // Handle atomic writes properly
             });
@@ -564,42 +847,60 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
                 const isIntel = this.isIntelChannel(channelName);
                 
                 if (isIntel) {
-                    console.log(`🎯 Watching INTEL channel: ${path.basename(filePath)} ⚡`);
+                    // Register this log file and check if it should be the primary
+                    const isPrimary = this.registerChannelLog(filePath);
+                    
+                    if (isPrimary) {
+                        this.log(`🎯 Watching INTEL channel: ${path.basename(filePath)} ⚡ (PRIMARY)`);
+                        // Initial load - only process recent messages for primary INTEL channels
+                        this.processLogFile(filePath, true);
+                    } else {
+                        this.log(`📋 Found additional INTEL log: ${path.basename(filePath)} (standby)`);
+                    }
                 } else {
-                    console.log(`👀 Watching log file: ${path.basename(filePath)}`);
+                    // Skip non-intel channels silently (removed verbose logging)
                 }
-                
-                // Initial load - only process recent messages
-                this.processLogFile(filePath, true);
             });
 
             watcher.on('change', (filePath) => {
-                const changeTime = new Date();
-                console.log(`🔄 [${changeTime.toLocaleTimeString()}] File change detected: ${path.basename(filePath)}`);
-                
                 // Only process files modified in the last 24 hours
                 if (!this.isFileRecent(filePath, 24)) {
-                    return; // Skip old files
+                    return; // Skip old files silently
                 }
 
                 const fileName = path.basename(filePath, '.txt');
                 const channelName = fileName.replace(/_\d{8}_\d{6}.*$/, '');
                 const isIntel = this.isIntelChannel(channelName);
                 
+                // Only log file changes for intel channels
                 if (isIntel) {
-                    console.log(`⚡ [${changeTime.toLocaleTimeString()}] Processing intel channel: ${channelName}`);
+                    const changeTime = new Date();
+                    console.log(`🔄 [${changeTime.toLocaleTimeString()}] File change detected: ${path.basename(filePath)}`);
+                    
+                    // Update activity and check if this should become the primary log
+                    const switchedToPrimary = this.updateLogActivity(filePath);
+                    
+                    // Only process if this is the primary log for this channel
+                    if (this.isPrimaryLog(filePath)) {
+                        console.log(`   ⚡ Processing INTEL channel: ${channelName} (PRIMARY)`);
+                        // If we just switched to this primary log, treat it as initial load to avoid backlog processing
+                        // Otherwise, normal processing for new messages only
+                        this.processLogFile(filePath, switchedToPrimary);
+                    } else {
+                        console.log(`   📋 Ignoring non-primary INTEL log: ${channelName}`);
+                    }
+                } else {
+                    // Silently ignore non-intel channels during runtime
+                    return;
                 }
-                
-                // Normal processing - only new messages
-                this.processLogFile(filePath, false);
             });
 
             watcher.on('error', (error) => {
-                console.error(`✗ Watcher error: ${error.message}`);
+                this.log(`✗ Watcher error: ${error.message}`);
                 this.stats.errorsEncountered++;
             });
 
-            console.log(`✓ Monitoring EVE chat logs in: ${logsDirectory}`);
+            this.log(`✓ Monitoring EVE chat logs in: ${logsDirectory}`);
             
             // Start heartbeat to track client connection
             this.startHeartbeat();
@@ -623,22 +924,22 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
         const hours = Math.floor(uptime / 3600);
         const minutes = Math.floor((uptime % 3600) / 60);
         
-        console.log(`\n📊 EVE Intel Monitor Stats:`);
-        console.log(`   Uptime: ${hours}h ${minutes}m`);
-        console.log(`   Messages processed: ${this.stats.messagesProcessed}`);
-        console.log(`   Intel sent: ${this.stats.intelSent}`);
-        console.log(`   Errors: ${this.stats.errorsEncountered}`);
-        console.log(`   Files watching: ${this.watchedFiles.size}`);
-        console.log('');
+        this.log(`\n📊 EVE Intel Monitor Stats:`);
+        this.log(`   Uptime: ${hours}h ${minutes}m`);
+        this.log(`   Messages processed: ${this.stats.messagesProcessed}`);
+        this.log(`   Intel sent: ${this.stats.intelSent}`);
+        this.log(`   Errors: ${this.stats.errorsEncountered}`);
+        this.log(`   Files watching: ${this.watchedFiles.size}`);
+        this.log('');
     }
 
     /**
      * Test connection to the server
      */
     async testConnection() {
-        console.log('🔧 Testing connection to server...');
+        this.log('🔧 Testing connection to server...');
         try {
-            const response = await fetch(`${this.config.serverUrl}/api/status`, {
+            const response = await fetch(`${this.config.serverUrl}/health`, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${this.config.apiKey}`
@@ -647,16 +948,16 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
 
             if (response.ok) {
                 const result = await response.json();
-                console.log('✅ Connection successful!');
-                console.log(`   Server: ${result.status || 'Online'}`);
-                console.log(`   Version: ${result.version || 'Unknown'}`);
+                this.log('✅ Connection successful!');
+                this.log(`   Server: ${result.status || 'online'}`);
+                this.log(`   Version: ${result.version || '1.0.0'}`);
                 return true;
             } else {
-                console.error(`❌ Connection failed: ${response.status} ${response.statusText}`);
+                this.log(`❌ Connection failed: ${response.status} ${response.statusText}`);
                 return false;
             }
         } catch (error) {
-            console.error(`❌ Connection error: ${error.message}`);
+            this.log(`❌ Connection error: ${error.message}`);
             return false;
         }
     }
@@ -709,7 +1010,14 @@ async function main() {
 
 // Handle graceful shutdown
 process.on('SIGINT', () => {
-    console.log('\n👋 Shutting down Intel Monitor...');
+    const now = new Date();
+    const timestamp = now.toLocaleTimeString('en-US', { 
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    console.log(`\n[${timestamp}] 👋 Shutting down Intel Monitor...`);
     if (global.monitor) {
         global.monitor.stopHeartbeat();
     }
@@ -717,7 +1025,14 @@ process.on('SIGINT', () => {
 });
 
 process.on('SIGTERM', () => {
-    console.log('\n👋 Shutting down Intel Monitor...');
+    const now = new Date();
+    const timestamp = now.toLocaleTimeString('en-US', { 
+        hour12: false,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    console.log(`\n[${timestamp}] 👋 Shutting down Intel Monitor...`);
     if (global.monitor) {
         global.monitor.stopHeartbeat();
     }
