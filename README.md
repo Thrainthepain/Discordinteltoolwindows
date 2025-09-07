@@ -1,55 +1,137 @@
-# EVE Online Intel Monitor Client - **FIXED VERSION** 🚀
+# EVE ## 🚀 **SUPER EASY INSTALLATION** (No Technical Skills Required!)
 
-A simple, lightweight desktop client that monitors your EVE Online chat logs and automatically submits **REAL-TIME** intel to the intelligence server.
+### **Step 1: Download**
 
-## 🔥 **MAJOR FIXES INCLUDED IN THIS VERSION**
+1. Click the green "Code" button → "Download ZIP"
+2. Extract the ZIP file to your Desktop or Documents folder
+3. Open the `Eve-Intel-Client` folder
+
+### **Step 2: ONE-CLICK LAUNCH**
+
+🎯 **Choose your launcher:**
+
+- **Windows Users**: Double-click `LAUNCH-INTEL-MONITOR.bat`
+- **Mac/Linux Users**: Double-click `LAUNCH-INTEL-MONITOR.sh` 
+- **Alternative**: Double-click `start-intel-monitor.bat` (Windows)
+
+**That's it!** The launcher will:
+
+- ✅ **Check** if you have Node.js installed
+- ✅ **Install** Node.js automatically if needed (with instructions)
+- ✅ **Install** all required packages  
+- ✅ **Launch** the intel monitor
+- ✅ **Connect** to the intel server automatically
+
+**No command line knowledge needed!** 🎉or Client 🚀
+
+**🎯 AUTOMATIC REAL-TIME INTEL MONITORING FOR EVE ONLINE**
+
+This client monitors your EVE Online chat logs and automatically submits intel to Discord **within 1 second** of it appearing in game!
+
+## � **SUPER EASY INSTALLATION** (No Technical Skills Required!)
+
+### **Step 1: Download**
+1. Click the green "Code" button → "Download ZIP"
+2. Extract the ZIP file to your Desktop or Documents folder
+3. Open the `Eve-Intel-Client` folder
+
+### **Step 2: ONE-CLICK LAUNCH** 
+🎯 **Just double-click `LAUNCH-INTEL-MONITOR.bat`** - That's it!
+
+The launcher will:
+- ✅ **Check** if you have Node.js installed
+- ✅ **Install** Node.js automatically if needed  
+- ✅ **Install** all required packages
+- ✅ **Launch** the intel monitor
+- ✅ **Connect** to the intel server automatically
+
+**No command line knowledge needed!** 🎉
+
+---
+
+## 🔥 **WHAT THIS VERSION FIXES**
+
+### ✅ **Fixed Message Line Counting**
+**PROBLEM SOLVED**: Intel messages were being skipped due to MOTD and header lines confusing the line tracking.
+
+**SOLUTION**: Now properly filters out:
+- � Channel MOTD messages
+- � EVE log file headers  
+- ⭕ Empty lines
+- 🎯 Only tracks actual user messages
 
 ### ✅ **Fixed Old Message Flooding**
-**PROBLEM SOLVED**: The previous version was submitting hours-old messages as "new" intel during startup, causing spam and confusion.
+**PROBLEM SOLVED**: The previous version was submitting hours-old messages as "new" intel during startup.
 
 **SOLUTION**: The client now properly distinguishes between:
 - 📋 **[INITIAL]** messages (old messages found during startup) - **NOT submitted**
 - ⚡ **REAL-TIME** messages (new messages appearing live) - **Submitted immediately**
 
-### ✅ **Fixed Client Connection Tracking** 
-**PROBLEM SOLVED**: The website wasn't showing connected clients properly.
-
-**SOLUTION**: Added robust heartbeat system that:
-- 💗 Sends heartbeat every 5 minutes to server
-- 🔗 Website now shows "Connected Clients: X" accurately
-- 📊 Proper client connection monitoring
-
-### ✅ **Fixed Module Warnings**
-**PROBLEM SOLVED**: Node.js was showing module type warnings.
-
-**SOLUTION**: Added proper `"type": "module"` configuration for clean startup.
-
-### ✅ **Enhanced Real-Time Detection**
-**IMPROVEMENT**: Optimized file watching and UTF-16 encoding support for faster, more reliable intel detection.
+### ✅ **Enhanced Intel Detection**
+**IMPROVEMENT**: Added buffer system to catch any missed messages and improved system name detection.
 
 ---
 
-## 🚀 Quick Start
+## 🚀 **Latest Optimizations (v2.1)**
+
+### **Performance Improvements:**
+- **🎯 INTEL-Only Monitoring**: Only watches channels containing "intel" in the name - no more random file processing
+- **⚡ 30-Second Heartbeat**: Increased from 5 minutes to 30 seconds for more responsive connection monitoring  
+- **🔄 Duplicate Prevention**: Server prevents duplicate intel from being sent to Discord within 5-minute windows
+- **💾 Memory Optimization**: Reduced resource usage by ignoring non-intel channels completely
+
+### **Before vs After:**
+```
+BEFORE: 👀 Watching ALL chat files (Local, Fleet, Corp, etc.)
+AFTER:  🎯 Only watching INTEL channels + ⏭️ Skipping non-intel channels
+
+BEFORE: 💗 Heartbeat every 5 minutes  
+AFTER:  💗 Heartbeat every 30 seconds
+
+BEFORE: Duplicate messages flood Discord
+AFTER:  🚫 Smart duplicate detection prevents spam
+```
 
 1. **Download the client files** to a folder on your computer
-2. **Double-click `start-intel-monitor.bat`** to run the client
-3. **Done!** The monitor will automatically find your EVE logs and start watching for intel
+2. **Choose your launcher**:
+   - **Windows**: Double-click `LAUNCH-INTEL-MONITOR.bat`
+   - **Mac/Linux**: Double-click `LAUNCH-INTEL-MONITOR.sh` (make executable: `chmod +x LAUNCH-INTEL-MONITOR.sh`)
+   - **Alternative**: Double-click `start-intel-monitor.bat` (Windows)
+3. **Done!** The launcher handles everything automatically!
+
+## 📋 **WHAT YOU'LL SEE WHEN IT WORKS**
+
+When the intel monitor is running properly, you'll see:
+
+```
+🚀 Simple EVE Intel Monitor Starting...
+📡 Server: https://intel.thrainkrill.space  
+👤 Pilot: [Your Character Name]
+✓ Monitoring EVE chat logs in: [Your EVE Logs Path]
+🎯 Watching INTEL channel: Phoenix_Intel_20250907_164829_2120829300.txt ⚡
+
+⚡ INTEL DETECTED: Phoenix_Intel - MQ-NPY* RTry Harder (message 2s old)
+✅ Intel submitted successfully (245ms)
+```
 
 ## 📋 Requirements
 
-- **Node.js** (Download from https://nodejs.org/)
-- **EVE Online** with chat logging enabled
 - **Windows** (tested on Windows 10/11)
+- **EVE Online** with chat logging enabled
+- **Node.js** (automatically installed by the launcher if needed)
 
 ## 🛠️ Setup
 
 ### Step 1: Enable EVE Chat Logging
+
 1. In EVE Online, press `ESC` → `Settings`
 2. Go to `Chat & Windows` tab
 3. Set `Chat Logging` to `Enabled`
 4. Join intel channels (like Phoenix_Intel, Phoenix_Intel_South, etc.)
 
-### Step 2: Configure the Client (Optional)
+### Step 2: Optional Configuration
+
+Most users don't need to configure anything! But if you want to customize:
 Edit `simple-intel-config.json` to customize settings:
 
 ```json
@@ -122,7 +204,7 @@ Edit `simple-intel-config.json` to customize settings:
 The client automatically detects channels with names containing:
 - `intel` (Phoenix_Intel, Alliance_Intel, etc.)
 - `military`
-- `defense` 
+- `defense`
 - `recon`
 - `standing fleet`
 
