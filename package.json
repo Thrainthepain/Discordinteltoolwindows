@@ -10,12 +10,12 @@
     "monitor": "node simple-intel-monitor.js start"
   },
   "dependencies": {
-    "chokidar": "^3.5.3"
+    "chokidar": "^3.6.0"
   },
   "keywords": [
-    "eve-online", 
-    "intel", 
-    "monitoring", 
+    "eve-online",
+    "intel",
+    "monitoring",
     "chat-logs",
     "command-line"
   ],

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Simple EVE Intel Monitor
+ * Simple EVE Intel Monitor - Fixed Version
  * Monitors EVE chat logs and pushes intel to the server
  * No GUI required - just run and forget
  */
@@ -17,11 +17,14 @@ class SimpleIntelMonitor {
             serverUrl: 'https://intel.thrainkrill.space',
             apiKey: 'desktop-client-api-key-2024',
             updateInterval: 1000, // Check every second
-            pilotName: 'Thrain Krill'
+            pilotName: 'Thrain Krill',
+            heartbeatInterval: 5 * 60 * 1000 // 5 minutes
         };
         
         this.watchedFiles = new Map();
         this.lastProcessedLines = new Map();
+        this.clientId = `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        this.heartbeatTimer = null;
         this.stats = {
             messagesProcessed: 0,
             intelSent: 0,
@@ -62,6 +65,7 @@ class SimpleIntelMonitor {
         try {
             const configPaths = [
                 path.join(process.cwd(), 'client-config-workers.json'),
+                path.join(process.cwd(), 'client', 'client-config-workers.json'),
                 path.join(process.cwd(), 'simple-intel-config.json')
             ];
 
@@ -96,6 +100,72 @@ class SimpleIntelMonitor {
             }
         } catch (error) {
             console.log(`⚠ Using default configuration: ${error.message}`);
+        }
+    }
+
+    /**
+     * Send heartbeat to server to track client connection
+     */
+    async sendHeartbeat() {
+        try {
+            const heartbeatData = {
+                clientId: this.clientId,
+                pilot: this.config.pilotName,
+                timestamp: new Date().toISOString(),
+                version: '1.0.0',
+                platform: `${os.platform()}-${os.arch()}`,
+                stats: {
+                    uptime: Math.floor((Date.now() - this.stats.startTime.getTime()) / 1000),
+                    messagesProcessed: this.stats.messagesProcessed,
+                    intelSent: this.stats.intelSent,
+                    errorsEncountered: this.stats.errorsEncountered,
+                    watchedFiles: this.watchedFiles.size
+                }
+            };
+
+            const response = await fetch(`${this.config.serverUrl}/api/heartbeat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.config.apiKey}`
+                },
+                body: JSON.stringify(heartbeatData)
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log(`💗 Heartbeat sent successfully`);
+            } else {
+                console.log(`⚠ Heartbeat failed: ${response.status} ${response.statusText}`);
+            }
+        } catch (error) {
+            console.log(`⚠ Heartbeat error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Start heartbeat timer
+     */
+    startHeartbeat() {
+        console.log(`💗 Starting heartbeat every ${this.config.heartbeatInterval / 1000 / 60} minutes`);
+        
+        // Send initial heartbeat
+        this.sendHeartbeat();
+        
+        // Set up periodic heartbeat
+        this.heartbeatTimer = setInterval(() => {
+            this.sendHeartbeat();
+        }, this.config.heartbeatInterval);
+    }
+
+    /**
+     * Stop heartbeat timer
+     */
+    stopHeartbeat() {
+        if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = null;
+            console.log('💗 Heartbeat stopped');
         }
     }
 
@@ -136,7 +206,11 @@ class SimpleIntelMonitor {
             
             // Custom game drives
             path.join('D:', 'EVE Online', 'logs', 'Chatlogs'),
-            path.join('E:', 'EVE Online', 'logs', 'Chatlogs')
+            path.join('E:', 'EVE Online', 'logs', 'Chatlogs'),
+            
+            // Linux Wine/Proton paths
+            path.join(os.homedir(), '.steam', 'steam', 'steamapps', 'compatdata', '8500', 'pfx', 'drive_c', 'users', 'steamuser', 'Documents', 'EVE', 'logs', 'Chatlogs'),
+            path.join(os.homedir(), '.local', 'share', 'Steam', 'steamapps', 'compatdata', '8500', 'pfx', 'drive_c', 'users', 'steamuser', 'Documents', 'EVE', 'logs', 'Chatlogs')
         ];
 
         console.log('🔍 Scanning for EVE Online chat logs...');
@@ -283,50 +357,58 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
         }
 
         const [, timestamp, pilot, message] = match;
+        
+        // Parse timestamp as local time (EVE logs are in local timezone)
+        const localTimestamp = timestamp.replace(/\./g, '-').replace(' ', 'T');
+        
         return {
-            timestamp: new Date(timestamp.replace(/\./g, '-').replace(' ', 'T') + 'Z'),
+            timestamp: new Date(localTimestamp), // Parse as local time, not UTC
             pilot: pilot.trim(),
             message: message.trim()
         };
     }
 
     /**
-     * Submit intel to the server
+     * Submit intel data to the server
      */
     async submitIntel(intelData) {
+        const startTime = Date.now();
         try {
-            const startTime = Date.now();
             const response = await fetch(`${this.config.serverUrl}/api/intel`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-API-Key': this.config.apiKey,
-                    'User-Agent': 'Simple-Intel-Monitor/1.0'
+                    'Authorization': `Bearer ${this.config.apiKey}`
                 },
                 body: JSON.stringify(intelData)
             });
 
             const responseTime = Date.now() - startTime;
-
+            
             if (response.ok) {
+                const result = await response.json();
                 this.stats.intelSent++;
-                const sourceIcon = intelData.source === 'intel_channel' ? '🎯' : '💬';
-                console.log(`✓ Intel sent ${sourceIcon}: ${intelData.system} - ${intelData.intel.substring(0, 50)}... (${responseTime}ms)`);
-                return true;
+                console.log(`✅ Intel submitted successfully (${responseTime}ms)`);
+                if (result.message && result.message !== 'Intel received successfully') {
+                    console.log(`   Server: ${result.message}`);
+                }
             } else {
-                throw new Error(`Server responded with status ${response.status}`);
+                const errorText = await response.text();
+                console.error(`❌ Failed to submit intel: ${response.status} ${response.statusText}`);
+                console.error(`   Response: ${errorText}`);
+                this.stats.errorsEncountered++;
             }
         } catch (error) {
+            const responseTime = Date.now() - startTime;
+            console.error(`❌ Error submitting intel (${responseTime}ms):`, error.message);
             this.stats.errorsEncountered++;
-            console.error(`✗ Failed to submit intel: ${error.message}`);
-            return false;
         }
     }
 
     /**
-     * Process a chat log file
+     * Process a chat log file with optimized initial loading
      */
-    async processLogFile(filePath) {
+    async processLogFile(filePath, isInitialLoad = false) {
         try {
             // Read file with proper encoding detection for EVE logs
             let content;
@@ -348,17 +430,40 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
 
             // Extract system name from filename
             const fileName = path.basename(filePath, '.txt');
-            const systemMatch = fileName.match(/^(.+?)_\d{8}_\d{6}.*$/); // Handle longer timestamps
+            const systemMatch = fileName.match(/^(.+?)_\d{8}_\d{6}.*$/);
             const system = systemMatch ? systemMatch[1] : 'Unknown';
-            const channelName = system; // Use the extracted system/channel name
+            const channelName = system;
             const isIntelChannel = this.isIntelChannel(channelName);
 
-            // Process new lines only
-            const newLines = lines.slice(lastProcessedLine);
+            // For initial load, only process messages from the last 10 minutes
+            let linesToProcess;
+            if (isInitialLoad) {
+                const now = new Date();
+                const tenMinutesAgo = new Date(now.getTime() - (10 * 60 * 1000));
+                
+                // Filter lines to only include messages from the last 10 minutes
+                linesToProcess = lines.filter(line => {
+                    if (!line.trim()) return false;
+                    const parsed = this.parseLogLine(line);
+                    if (!parsed) return false;
+                    return parsed.timestamp >= tenMinutesAgo;
+                });
+                
+                if (isIntelChannel && linesToProcess.length > 0) {
+                    console.log(`📋 Initial load: ${channelName} - found ${linesToProcess.length} recent messages (last 10 minutes)`);
+                }
+                
+                // Set last processed to total lines to avoid reprocessing on next change
+                this.lastProcessedLines.set(filePath, lines.length);
+            } else {
+                // Normal processing: only new lines since last processed
+                linesToProcess = lines.slice(lastProcessedLine);
+            }
+            
             let processedCount = 0;
             let newMessageCount = 0;
 
-            for (const line of newLines) {
+            for (const line of linesToProcess) {
                 if (!line.trim()) continue;
 
                 const parsed = this.parseLogLine(line);
@@ -369,9 +474,17 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
                 newMessageCount++;
                 this.stats.messagesProcessed++;
 
-                // Show all new messages from intel channels
+                // Show messages from intel channels (limit output for initial load)
                 if (isIntelChannel) {
-                    console.log(`💬 [${channelName}] ${parsed.pilot}: ${parsed.message}`);
+                    if (!isInitialLoad) {
+                        const timestamp = new Date().toLocaleTimeString();
+                        const messageAge = Math.floor((new Date() - parsed.timestamp) / 1000);
+                        console.log(`💬 [${timestamp}] [${channelName}] ${parsed.pilot}: ${parsed.message} (${messageAge}s ago)`);
+                    } else if (newMessageCount <= 3) {
+                        console.log(`💬 [RECENT] [${channelName}] ${parsed.pilot}: ${parsed.message}`);
+                    } else if (newMessageCount === 4) {
+                        console.log(`💬 [RECENT] [${channelName}] ... (${linesToProcess.length - 3} more recent messages)`);
+                    }
                 }
 
                 // Extract intel if message contains keywords
@@ -384,17 +497,31 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
                 );
 
                 if (intelData) {
-                    console.log(`⚡ INTEL DETECTED: ${intelData.system} - ${intelData.intel}`);
-                    await this.submitIntel(intelData);
-                    processedCount++;
+                    const messageAge = Math.floor((new Date() - parsed.timestamp) / 1000);
+                    
+                    // Only submit intel for NEW messages (not during initial load)
+                    if (!isInitialLoad) {
+                        const submitStartTime = Date.now();
+                        console.log(`⚡ INTEL DETECTED: ${intelData.system} - ${intelData.intel} (message ${messageAge}s old)`);
+                        await this.submitIntel(intelData);
+                        const submitTime = Date.now() - submitStartTime;
+                        console.log(`✅ Intel submitted in ${submitTime}ms (total delay: ~${messageAge}s)`);
+                        processedCount++;
+                    } else {
+                        // During initial load, just log that we found intel but don't submit
+                        console.log(`📋 [INITIAL] Intel found: ${intelData.system} - ${intelData.intel} (message ${messageAge}s old) - NOT submitted`);
+                    }
                 }
             }
 
-            // Update last processed line count
-            this.lastProcessedLines.set(filePath, lines.length);
+            // Update last processed line count (only for non-initial loads)
+            if (!isInitialLoad) {
+                this.lastProcessedLines.set(filePath, lines.length);
+            }
 
             if (newMessageCount > 0 && isIntelChannel) {
-                console.log(`📊 ${newMessageCount} new messages in ${channelName}${processedCount > 0 ? `, ${processedCount} intel sent` : ''}`);
+                const loadType = isInitialLoad ? 'recent' : 'new';
+                console.log(`📨 ${newMessageCount} ${loadType} messages in ${channelName}${processedCount > 0 ? `, ${processedCount} intel sent` : ''}`);
             }
 
         } catch (error) {
@@ -414,10 +541,16 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
         try {
             const logsDirectory = this.findEveLogsDirectory();
             
-            // Watch for new and modified log files
+            // Watch for new and modified log files with optimized settings
             const watcher = watch(path.join(logsDirectory, '*.txt'), {
                 persistent: true,
-                ignoreInitial: false
+                ignoreInitial: false,
+                usePolling: false,        // Use native OS events for faster detection
+                awaitWriteFinish: {       // Wait for file write to complete
+                    stabilityThreshold: 100,  // Wait 100ms after last change
+                    pollInterval: 50          // Check every 50ms
+                },
+                atomic: true              // Handle atomic writes properly
             });
 
             watcher.on('add', (filePath) => {
@@ -427,7 +560,7 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
                 }
 
                 const fileName = path.basename(filePath, '.txt');
-                const channelName = fileName.replace(/_\d{8}_\d{6}.*$/, ''); // Remove timestamp and any suffix
+                const channelName = fileName.replace(/_\d{8}_\d{6}.*$/, '');
                 const isIntel = this.isIntelChannel(channelName);
                 
                 if (isIntel) {
@@ -436,21 +569,29 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
                     console.log(`👀 Watching log file: ${path.basename(filePath)}`);
                 }
                 
-                this.processLogFile(filePath);
+                // Initial load - only process recent messages
+                this.processLogFile(filePath, true);
             });
 
             watcher.on('change', (filePath) => {
+                const changeTime = new Date();
+                console.log(`🔄 [${changeTime.toLocaleTimeString()}] File change detected: ${path.basename(filePath)}`);
+                
                 // Only process files modified in the last 24 hours
                 if (!this.isFileRecent(filePath, 24)) {
                     return; // Skip old files
                 }
 
                 const fileName = path.basename(filePath, '.txt');
-                const channelName = fileName.replace(/_\d{8}_\d{6}.*$/, ''); // Remove timestamp and any suffix
+                const channelName = fileName.replace(/_\d{8}_\d{6}.*$/, '');
                 const isIntel = this.isIntelChannel(channelName);
                 
-                // Process the file
-                this.processLogFile(filePath);
+                if (isIntel) {
+                    console.log(`⚡ [${changeTime.toLocaleTimeString()}] Processing intel channel: ${channelName}`);
+                }
+                
+                // Normal processing - only new messages
+                this.processLogFile(filePath, false);
             });
 
             watcher.on('error', (error) => {
@@ -459,6 +600,9 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
             });
 
             console.log(`✓ Monitoring EVE chat logs in: ${logsDirectory}`);
+            
+            // Start heartbeat to track client connection
+            this.startHeartbeat();
             
             // Print stats every 5 minutes
             setInterval(() => {
@@ -479,45 +623,51 @@ ${possiblePaths.slice(0, 5).map(p => `  - ${p}`).join('\n')}
         const hours = Math.floor(uptime / 3600);
         const minutes = Math.floor((uptime % 3600) / 60);
         
-        console.log('\n📊 === Intel Monitor Stats ===');
-        console.log(`⏱️  Uptime: ${hours}h ${minutes}m`);
-        console.log(`📨 Messages processed: ${this.stats.messagesProcessed}`);
-        console.log(`🎯 Intel sent: ${this.stats.intelSent}`);
-        console.log(`❌ Errors: ${this.stats.errorsEncountered}`);
-        console.log('=============================\n');
+        console.log(`\n📊 EVE Intel Monitor Stats:`);
+        console.log(`   Uptime: ${hours}h ${minutes}m`);
+        console.log(`   Messages processed: ${this.stats.messagesProcessed}`);
+        console.log(`   Intel sent: ${this.stats.intelSent}`);
+        console.log(`   Errors: ${this.stats.errorsEncountered}`);
+        console.log(`   Files watching: ${this.watchedFiles.size}`);
+        console.log('');
     }
 
     /**
-     * Test connection to server
+     * Test connection to the server
      */
     async testConnection() {
+        console.log('🔧 Testing connection to server...');
         try {
-            console.log('🔍 Testing connection to server...');
-            
-            const response = await fetch(`${this.config.serverUrl}/health`, {
+            const response = await fetch(`${this.config.serverUrl}/api/status`, {
                 method: 'GET',
                 headers: {
-                    'User-Agent': 'Simple-Intel-Monitor/1.0'
+                    'Authorization': `Bearer ${this.config.apiKey}`
                 }
             });
 
             if (response.ok) {
-                const data = await response.json();
-                console.log(`✓ Server connection OK: ${data.service} v${data.version}`);
+                const result = await response.json();
+                console.log('✅ Connection successful!');
+                console.log(`   Server: ${result.status || 'Online'}`);
+                console.log(`   Version: ${result.version || 'Unknown'}`);
                 return true;
             } else {
-                throw new Error(`Server responded with status ${response.status}`);
+                console.error(`❌ Connection failed: ${response.status} ${response.statusText}`);
+                return false;
             }
         } catch (error) {
-            console.error(`✗ Connection test failed: ${error.message}`);
+            console.error(`❌ Connection error: ${error.message}`);
             return false;
         }
     }
 }
 
-// CLI Interface
+// Main function
 async function main() {
     const monitor = new SimpleIntelMonitor();
+    
+    // Make monitor available for graceful shutdown
+    global.monitor = monitor;
     
     // Load configuration
     monitor.loadConfig();
@@ -550,12 +700,9 @@ async function main() {
             console.log('  node simple-intel-monitor.js [command]');
             console.log('');
             console.log('Commands:');
-            console.log('  start    Start monitoring (default)');
             console.log('  test     Test connection to server');
+            console.log('  start    Start monitoring (default)');
             console.log('  help     Show this help message');
-            console.log('');
-            console.log('Configuration:');
-            console.log('  Place client-config-workers.json or simple-intel-config.json in the same directory');
             break;
     }
 }
@@ -563,11 +710,17 @@ async function main() {
 // Handle graceful shutdown
 process.on('SIGINT', () => {
     console.log('\n👋 Shutting down Intel Monitor...');
+    if (global.monitor) {
+        global.monitor.stopHeartbeat();
+    }
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
     console.log('\n👋 Shutting down Intel Monitor...');
+    if (global.monitor) {
+        global.monitor.stopHeartbeat();
+    }
     process.exit(0);
 });
 
