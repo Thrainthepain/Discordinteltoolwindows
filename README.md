@@ -91,10 +91,7 @@ AFTER:  🚫 Smart duplicate detection prevents spam
 ```
 
 1. **Download the client files** to a folder on your computer
-2. **Choose your launcher**:
-   - **Windows**: Double-click `LAUNCH-INTEL-MONITOR.bat`
-   - **Mac/Linux**: Double-click `LAUNCH-INTEL-MONITOR.sh` (make executable: `chmod +x LAUNCH-INTEL-MONITOR.sh`)
-   - **Alternative**: Double-click `start-intel-monitor.bat` (Windows)
+2. Double-click `LAUNCH-INTEL-MONITOR.bat`
 3. **Done!** The launcher handles everything automatically!
 
 ## 📋 **WHAT YOU'LL SEE WHEN IT WORKS**
@@ -345,4 +342,5 @@ If you encounter issues:
 **Server Status**: <https://intel.thrainkrill.space>  
 **Client Package**: `E:\discordeveintel\Eve-Intel-Client\`  
 **Last Updated**: September 7, 2025 - **MAJOR FIX RELEASE**
+
 
