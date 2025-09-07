@@ -11,8 +11,6 @@
 🎯 **Choose your launcher:**
 
 - **Windows Users**: Double-click `LAUNCH-INTEL-MONITOR.bat`
-- **Mac/Linux Users**: Double-click `LAUNCH-INTEL-MONITOR.sh` 
-- **Alternative**: Double-click `start-intel-monitor.bat` (Windows)
 
 **That's it!** The launcher will:
 
@@ -72,7 +70,7 @@ The launcher will:
 
 ---
 
-## 🚀 **Latest Optimizations (v2.1)**
+## 🚀 **Latest Optimizations (v1.1.0)**
 
 ### **Performance Improvements:**
 - **🎯 INTEL-Only Monitoring**: Only watches channels containing "intel" in the name - no more random file processing
@@ -294,7 +292,7 @@ Access the intel dashboard at: <https://intel.thrainkrill.space>
 
 ## 📝 **Version History**
 
-- **v1.2.0** - **MAJOR FIX RELEASE** 🔥
+- **v1.0.5** - **MAJOR FIX RELEASE** 🔥
   - ✅ Fixed old message flooding during startup
   - ✅ Added proper client connection tracking with heartbeat
   - ✅ Implemented KV-free architecture (no storage limitations)
@@ -347,3 +345,4 @@ If you encounter issues:
 **Server Status**: <https://intel.thrainkrill.space>  
 **Client Package**: `E:\discordeveintel\Eve-Intel-Client\`  
 **Last Updated**: September 7, 2025 - **MAJOR FIX RELEASE**
+
