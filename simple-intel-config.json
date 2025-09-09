@@ -2,5 +2,9 @@
   "serverUrl": "https://intel.thrainkrill.space",
   "apiKey": "desktop-client-api-key-2024",
   "pilotName": "Thrain Krill",
-  "eveLogsPath": ""
+  "eveLogsPath": "",
+  "_comment1": "Set your EVE pilot name above",
+  "_comment2": "Leave eveLogsPath empty for automatic detection",
+  "_comment3": "Or set a custom path like: C:\\Users\\YourName\\Documents\\EVE\\logs\\Chatlogs",
+  "_comment4": "Custom path will override automatic detection if valid"
 }

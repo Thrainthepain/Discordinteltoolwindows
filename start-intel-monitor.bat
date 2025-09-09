@@ -215,24 +215,91 @@ echo.
 :install_dependencies
 REM 3. Install dependencies from package.json
 echo [3/5] Checking for dependencies...
+
+REM First check if package.json exists
+if not exist "package.json" (
+    echo.
+    echo ============================================
+    echo   ERROR: package.json not found!
+    echo ============================================
+    echo.
+    echo This script needs a package.json file to install dependencies.
+    echo Please make sure you have all the required files:
+    echo - simple-intel-monitor.js
+    echo - package.json
+    echo - start-intel-monitor.bat
+    echo.
+    echo Make sure you extracted all files from the ZIP properly.
+    echo.
+    pause
+    exit /b 1
+)
+
 if not exist "%NODE_MODULES_DIR%" (
     echo 'node_modules' directory not found. Installing required packages...
     echo This may take a few moments on the first run...
     echo.
-    npm install
+    
+    REM First check if npm is available
+    npm --version >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo npm not found in PATH, trying to locate it...
+        
+        REM Try to find npm in common Node.js installation paths
+        set "NPM_PATH="
+        if exist "%ProgramFiles%\nodejs\npm.cmd" set "NPM_PATH=%ProgramFiles%\nodejs\npm.cmd"
+        if exist "%ProgramFiles(x86)%\nodejs\npm.cmd" set "NPM_PATH=%ProgramFiles(x86)%\nodejs\npm.cmd"
+        if exist "%LOCALAPPDATA%\Programs\nodejs\npm.cmd" set "NPM_PATH=%LOCALAPPDATA%\Programs\nodejs\npm.cmd"
+        if exist "%USERPROFILE%\AppData\Local\Programs\nodejs\npm.cmd" set "NPM_PATH=%USERPROFILE%\AppData\Local\Programs\nodejs\npm.cmd"
+        
+        if defined NPM_PATH (
+            echo Found npm at: %NPM_PATH%
+            echo Running npm install with bypass for Windows script execution policy...
+            powershell -NoProfile -ExecutionPolicy Bypass -Command "& { Start-Process cmd -ArgumentList '/c', '\"%NPM_PATH%\" install' -Wait -NoNewWindow }"
+        ) else (
+            echo ERROR: npm not found! Node.js may not be properly installed.
+            echo Please make sure Node.js is installed correctly.
+            pause
+            exit /b 1
+        )
+    ) else (
+        echo npm found, installing packages...
+        echo Running npm install with bypass for Windows script execution policy...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "& { Start-Process cmd -ArgumentList '/c', 'npm install' -Wait -NoNewWindow }"
+    )
+    
     if %errorlevel% neq 0 (
         echo.
-        echo ============================================
-        echo   ERROR: Failed to install dependencies
-        echo ============================================
+        echo npm install may have failed. Trying alternative method...
         echo.
-        echo Possible solutions:
-        echo 1. Check your internet connection.
-        echo 2. Try running this script as an Administrator.
-        echo 3. Clear the npm cache by running: npm cache clean --force
-        echo.
-        pause
-        exit /b 1
+        
+        REM Try direct npm execution without PowerShell
+        if defined NPM_PATH (
+            echo Trying direct npm execution...
+            "%NPM_PATH%" install --no-optional --no-audit
+        ) else (
+            npm install --no-optional --no-audit
+        )
+        
+        if %errorlevel% neq 0 (
+            echo.
+            echo ============================================
+            echo   ERROR: Failed to install dependencies
+            echo ============================================
+            echo.
+            echo This might be due to Windows script execution policy.
+            echo.
+            echo Possible solutions:
+            echo 1. Run this script as an Administrator (right-click → "Run as administrator")
+            echo 2. Temporarily enable PowerShell scripts by running this command as Administrator:
+            echo    Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+            echo 3. Check your internet connection
+            echo 4. Try installing manually by opening Command Prompt in this folder and running:
+            echo    npm install
+            echo.
+            pause
+            exit /b 1
+        )
     )
     echo Dependencies installed successfully.
     echo.
@@ -241,9 +308,33 @@ if not exist "%NODE_MODULES_DIR%" (
     echo.
 )
 
+:validate_config
+REM 4. Validate configuration
+echo [4/6] Validating configuration...
+
+REM Check if config file exists
+if not exist "simple-intel-config.json" (
+    echo.
+    echo ============================================
+    echo   ERROR: Configuration file not found!
+    echo ============================================
+    echo.
+    echo The file simple-intel-config.json is missing.
+    echo Please make sure you have all the required files.
+    echo.
+    pause
+    exit /b 1
+)
+
+REM Use node to check if custom EVE logs path is valid (if set)
+node -e "const fs = require('fs'); const config = JSON.parse(fs.readFileSync('simple-intel-config.json', 'utf8')); if (config.eveLogsPath && config.eveLogsPath.trim() !== '' && !fs.existsSync(config.eveLogsPath)) { console.log('WARNING: Custom EVE logs path not found: ' + config.eveLogsPath); console.log('The monitor will attempt auto-detection instead.'); } else if (config.eveLogsPath && config.eveLogsPath.trim() !== '') { console.log('Custom EVE logs path validated: ' + config.eveLogsPath); } else { console.log('Using auto-detection for EVE logs directory.'); }" 2>nul
+
+echo Configuration validated.
+echo.
+
 :test_connection
-REM 4. Test server connection
-echo [4/5] Testing connection to the intel server...
+REM 5. Test server connection
+echo [5/6] Testing connection to the intel server...
 node "%SCRIPT_NAME%" test
 if %errorlevel% neq 0 (
     echo.
@@ -257,8 +348,8 @@ echo Connection test successful!
 echo.
 
 :start_monitor
-REM 5. Start the monitor
-echo [5/5] Starting the EVE Intel Monitor...
+REM 6. Start the monitor
+echo [6/6] Starting the EVE Intel Monitor...
 echo Press CTRL+C in this window to stop the script.
 echo =================================================
 echo.
