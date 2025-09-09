@@ -1,27 +1,26 @@
 {
-  "name": "eve-intel-monitor-simple",
-  "version": "1.0.0",
-  "description": "Simple EVE Online Intel Monitor - Command Line Client",
-  "main": "simple-intel-monitor.js",
-  "type": "module",
-  "scripts": {
-    "start": "node simple-intel-monitor.js",
-    "test": "node simple-intel-monitor.js test",
-    "monitor": "node simple-intel-monitor.js start"
-  },
-  "dependencies": {
-    "chokidar": "^3.6.0"
-  },
-  "keywords": [
-    "eve-online",
-    "intel",
-    "monitoring",
-    "chat-logs",
-    "command-line"
-  ],
-  "author": "Thrain Krill",
-  "license": "MIT",
-  "engines": {
-    "node": ">=16.0.0"
-  }
+"name": "eve-intel-monitor-simple",
+"version": "2.1.0",
+"description": "A simple command-line client to monitor EVE Online chat logs for intel.",
+"main": "simple-intel-monitor.js",
+"type": "module",
+"scripts": {
+"start": "node simple-intel-monitor.js start",
+"test": "node simple-intel-monitor.js test",
+"help": "node simple-intel-monitor.js help"
+},
+"dependencies": {
+"node-fetch": "^3.3.2"
+},
+"keywords": [
+"eve-online",
+"intel",
+"monitoring",
+"chat-logs"
+],
+"author": "Thrain Krill",
+"license": "MIT",
+"engines": {
+"node": ">=16.0.0"
+}
 }
