@@ -29,43 +29,54 @@ A simple, lightweight desktop client that monitors your EVE Online chat logs and
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start - **SUPER EASY!**
 
-1. **Download the client files** to a folder on your computer
-2. **Double-click `start-intel-monitor.bat`** to run the client
-3. **Done!** The monitor will automatically find your EVE logs and start watching for intel
+### **For New Users (First Time Setup):**
+1. **Download all files** to a folder on your computer
+2. **Double-click `start-intel-monitor.bat`**
+3. **If Node.js isn't installed:** The script will automatically open the download page - just install it and run the script again
+4. **That's it!** Everything else is automatic:
+   - ✅ Automatically installs required packages
+   - ✅ Automatically finds your EVE chat logs  
+   - ✅ Automatically tests server connection
+   - ✅ Starts monitoring for real-time intel
 
-## 📋 Requirements
+### **For Return Users:**
+Just double-click `start-intel-monitor.bat` - everything is already set up!
 
-- **Node.js** (Download from https://nodejs.org/)
+## 📋 What You Need
+
+- **Windows** computer (tested on Windows 10/11)
+- **Node.js** - *Don't worry! The script will guide you through installation if needed*
 - **EVE Online** with chat logging enabled
 - **Windows** (tested on Windows 10/11)
 
-## 🛠️ Setup
+## 🛠️ Setup Details
+
+*Most users can skip this section - the batch file handles everything automatically!*
 
 ### Step 1: Enable EVE Chat Logging
 1. In EVE Online, press `ESC` → `Settings`
-2. Go to `Chat & Windows` tab
+2. Go to `Chat & Windows` tab  
 3. Set `Chat Logging` to `Enabled`
 4. Join intel channels (like Phoenix_Intel, Phoenix_Intel_South, etc.)
 
-### Step 2: Configure the Client (Optional)
-Edit `simple-intel-config.json` to customize settings:
+### Step 2: Configuration (Optional)
+The client works perfectly with default settings! But if you want to customize, edit `simple-intel-config.json`:
 
 ```json
 {
   "serverUrl": "https://intel.thrainkrill.space",
-  "apiKey": "desktop-client-api-key-2024",
+  "apiKey": "desktop-client-api-key-2024", 
   "pilotName": "Your Pilot Name",
-  "eveLogsPath": "C:\\Path\\To\\Your\\EVE\\logs\\Chatlogs"
+  "eveLogsPath": "auto"
 }
 ```
 
-**Most users don't need to change anything!** The client will automatically find your EVE logs.
+**The client automatically finds your EVE logs** - no manual path configuration needed!
 
 ### Step 3: Run the Client
-- **Easy way**: Double-click `start-intel-monitor.bat`
-- **Command line**: `node simple-intel-monitor.js`
+Just double-click `start-intel-monitor.bat` - that's it!
 
 ## 📁 Files Included
 
