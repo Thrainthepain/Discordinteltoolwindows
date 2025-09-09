@@ -6,6 +6,30 @@ echo     EVE Online Intel Monitor Client
 echo =====================================
 echo.
 
+REM --- Check if running from zip file ---
+echo %CD% | findstr /C:"AppData\Local\Temp" >nul 2>&1
+if %errorlevel% equ 0 (
+    echo.
+    echo ================================================================
+    echo                        IMPORTANT NOTICE
+    echo ================================================================
+    echo.
+    echo It looks like you're running this script from inside a ZIP file
+    echo or temporary folder. This won't work properly!
+    echo.
+    echo Please follow these steps:
+    echo 1. Right-click the ZIP file you downloaded
+    echo 2. Select "Extract All..." or "Extract Here"
+    echo 3. Choose a permanent folder ^(like Desktop or Documents^)
+    echo 4. Run the script from the extracted folder
+    echo.
+    echo Current location: %CD%
+    echo.
+    echo ================================================================
+    pause
+    exit /b 1
+)
+
 REM --- Configuration ---
 set "SCRIPT_NAME=simple-intel-monitor.js"
 set "NODE_MODULES_DIR=node_modules"
