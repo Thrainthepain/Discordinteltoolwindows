@@ -276,5 +276,3 @@ If you encounter issues:
 **Server Status**: <https://intel.thrainkrill.space>  
 **Client Package**: `E:\discordeveintel\Eve-Intel-Client\`  
 **Last Updated**: September 7, 2025 - **MAJOR FIX RELEASE**
-**For Linux users, please use the Linux version - https://github.com/Thrainthepain/Discordinteltoollinux**
-
